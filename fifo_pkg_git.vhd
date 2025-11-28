@@ -7,10 +7,10 @@ package fifo_pkg is
   ---------------------------------------------------------------------------
   -- Types
   ---------------------------------------------------------------------------
-  constant dwidth : integer := 8;
+  constant DWIDTH_EXP : integer := 3;
 
   type AXIS_8_t is record
-    data  : std_logic_vector(dwidth - 1 downto 0);
+    data  : std_logic_vector(2**DWIDTH_EXP - 1 downto 0);
     valid : std_logic;
     tlast : std_logic;
   end record;
