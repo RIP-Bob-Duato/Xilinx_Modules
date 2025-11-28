@@ -5,7 +5,7 @@
 -- 
 -- Create Date: 03/11/2024 11:14:51 PM
 -- Design Name: 
--- Module Name: mdio_top - Behavioral
+-- Module Name: DH_sync_async_FIFO - Behavioral
 -- Project Name: 
 -- Target Devices: 
 -- Tool Versions: 
@@ -36,11 +36,10 @@ use xpm.vcomponents.all;
 Library UNIMACRO;
 use UNIMACRO.vcomponents.all;
 use work.fifo_pkg.all;
-use work.net_headers_pkg.all;
 
 
 entity DH_sync_async_FIFO is
-     GENERIC (DWIDTH         : integer;
+     GENERIC (DWIDTH_EXP     : integer;
               metadata_width : integer;
               DEPTH_EXP      : integer;
               CDC            : BOOLEAN;
@@ -53,10 +52,10 @@ entity DH_sync_async_FIFO is
 
            CLK_b           : in std_logic;
 
-           s_axis_stream   : in ETH_RX_t;
+           s_axis_stream   : in AXIS_8_t;
            s_axis_tready   : out std_logic;
 
-           m_axis_stream   : out ETH_RX_t;
+           m_axis_stream   : out AXIS_8_t;
            m_axis_tready   : in std_logic);    
 end DH_sync_async_FIFO;
 
@@ -67,9 +66,9 @@ signal m_almost_empty, s_almost_full, m_axis_fifo_empty, s_axis_fifo_full,
        
 signal s_wr_cnt, m_rd_cnt : std_logic_vector (DEPTH_EXP downto 0) := (others => '0');
 
-signal s_axis_dbus, m_axis_dbus : std_logic_vector(DWIDTH + metadata_width - 1 downto 0) := (others => '0');
+signal s_axis_dbus, m_axis_dbus : std_logic_vector(2**DWIDTH_EXP + metadata_width - 1 downto 0) := (others => '0');
 
-type m_stream_pipeline_buffer_t is array(0 to PIPELINE_STAGES - 1) of ETH_RX_t;
+type m_stream_pipeline_buffer_t is array(0 to PIPELINE_STAGES - 1) of AXIS_8_t;
 signal m_stream_pipeline_buffer : m_stream_pipeline_buffer_t;
 
 signal RSTb : STD_LOGIC;
@@ -83,39 +82,39 @@ attribute keep of m_axis_fifo_empty: signal is "true";
 begin
 
     -- DWIDTH must be in supported range
-    ASSERT_DWIDTH_RANGE : assert (DWIDTH >= 1 and DWIDTH <= 72)
-      report "DH_sync_async_FIFO: DWIDTH=" & integer'image(DWIDTH) &
+    ASSERT_DWIDTH_RANGE : assert (2**DWIDTH_EXP >= 1 and 2**DWIDTH_EXP <= 72)
+      report "DH_sync_async_FIFO: DWIDTH=" & integer'image(DWIDTH_EXP) &
              " is out of supported range [1..72] for FIFO_SIZE=""36Kb""."
       severity failure;
 
     -- For each DWIDTH band, enforce minimum DEPTH_EXP for RDCOUNT/WRCOUNT bits
-    ASSERT_DEPTH_37_72 : assert not (DWIDTH >= 37 and DWIDTH <= 72) or (DEPTH_EXP >= 9)
+    ASSERT_DEPTH_37_72 : assert not (2**DWIDTH_EXP >= 37 and 2**DWIDTH_EXP <= 72) or (DEPTH_EXP >= 9)
       report "DH_sync_async_FIFO: DEPTH_EXP=" & integer'image(DEPTH_EXP) &
-             " too small for DWIDTH=" & integer'image(DWIDTH) &
+             " too small for DWIDTH=" & integer'image(2**DWIDTH) &
              " (requires at least 9-bit RD/WR count)."
       severity failure;
 
-    ASSERT_DEPTH_19_36 : assert not (DWIDTH >= 19 and DWIDTH <= 36) or (DEPTH_EXP >= 10)
+    ASSERT_DEPTH_19_36 : assert not (2**DWIDTH_EXP >= 19 and 2**DWIDTH_EXP <= 36) or (DEPTH_EXP >= 10)
       report "DH_sync_async_FIFO: DEPTH_EXP=" & integer'image(DEPTH_EXP) &
-             " too small for DWIDTH=" & integer'image(DWIDTH) &
+             " too small for DWIDTH=" & integer'image(2**DWIDTH_EXP) &
              " (requires at least 10-bit RD/WR count)."
       severity failure;
 
-    ASSERT_DEPTH_10_18 : assert not (DWIDTH >= 10 and DWIDTH <= 18) or (DEPTH_EXP >= 11)
+    ASSERT_DEPTH_10_18 : assert not (2**DWIDTH_EXP >= 10 and 2**DWIDTH_EXP <= 18) or (DEPTH_EXP >= 11)
       report "DH_sync_async_FIFO: DEPTH_EXP=" & integer'image(DEPTH_EXP) &
-             " too small for DWIDTH=" & integer'image(DWIDTH) &
+             " too small for DWIDTH=" & integer'image(2**DWIDTH_EXP) &
              " (requires at least 11-bit RD/WR count)."
       severity failure;
 
-    ASSERT_DEPTH_5_9 : assert not (DWIDTH >= 5 and DWIDTH <= 9) or (DEPTH_EXP >= 12)
+    ASSERT_DEPTH_5_9 : assert not (2**DWIDTH_EXP >= 5 and 2**DWIDTH_EXP <= 9) or (DEPTH_EXP >= 12)
       report "DH_sync_async_FIFO: DEPTH_EXP=" & integer'image(DEPTH_EXP) &
-             " too small for DWIDTH=" & integer'image(DWIDTH) &
+             " too small for DWIDTH=" & integer'image(2**DWIDTH_EXP) &
              " (requires at least 12-bit RD/WR count)."
       severity failure;
 
-    ASSERT_DEPTH_1_4 : assert not (DWIDTH >= 1 and DWIDTH <= 4) or (DEPTH_EXP >= 13)
+    ASSERT_DEPTH_1_4 : assert not (2**DWIDTH_EXP >= 1 and 2**DWIDTH_EXP <= 4) or (DEPTH_EXP >= 13)
       report "DH_sync_async_FIFO: DEPTH_EXP=" & integer'image(DEPTH_EXP) &
-             " too small for DWIDTH=" & integer'image(DWIDTH) &
+             " too small for DWIDTH=" & integer'image(2**DWIDTH_EXP) &
              " (requires at least 13-bit RD/WR count)."
       severity failure;
 
@@ -136,7 +135,7 @@ begin
    );
 
     s_axis_tready <= not s_axis_fifo_full;
-    s_axis_dbus   <= s_axis_stream.data(DWIDTH - 1 downto 0) & s_axis_stream.tlast;
+    s_axis_dbus   <= s_axis_stream.data(2**DWIDTH_EXP - 1 downto 0) & s_axis_stream.tlast;
     -----------------------------------------------------------------
     -- DATA_WIDTH | FIFO_SIZE | FIFO Depth | RDCOUNT/WRCOUNT Width --
     -- ===========|===========|============|=======================--
@@ -150,14 +149,14 @@ begin
     --    1-4     |  "36Kb"   |    8192    |        13-bit         --
     --    1-4     |  "18Kb"   |    4096    |        12-bit         --
     -----------------------------------------------------------------
-    GEN_CDC : if CDC = FALSE GENERATE
+    GEN_nCDC : if CDC = FALSE GENERATE
     
         sync_FIFO_inst : FIFO_SYNC_MACRO
         generic map (
            DEVICE              => "7SERIES",            -- Target Device: "VIRTEX5, "VIRTEX6", "7SERIES" 
            ALMOST_FULL_OFFSET  => AF_OFFSET,  -- Sets almost full threshold
            ALMOST_EMPTY_OFFSET => AE_OFFSET, -- Sets the almost empty threshold
-           DATA_WIDTH          => (DWIDTH + metadata_width),   -- Valid values are 1-72 (37-72 only valid when FIFO_SIZE="36Kb")
+           DATA_WIDTH          => (2**DWIDTH_EXP + metadata_width),   -- Valid values are 1-72 (37-72 only valid when FIFO_SIZE="36Kb")
            FIFO_SIZE           => "36Kb")            -- Target BRAM, "18Kb" or "36Kb" 
         port map (
            ALMOSTEMPTY => m_almost_empty,                   -- 1-bit output almost empty
@@ -175,16 +174,16 @@ begin
            RST         => RST,                              -- 1-bit input reset
            WREN        => s_axis_stream.valid               -- 1-bit input write enable
         );
-    END GENERATE GEN_CDC;
+    END GENERATE GEN_nCDC;
 
-    GEN_nCDC : if CDC = TRUE GENERATE 
+    GEN_CDC : if CDC = TRUE GENERATE 
     
         FIFO_MACRO_inst0 : FIFO_DUALCLOCK_MACRO
         generic map (
            DEVICE => "7SERIES",            -- Target Device: "VIRTEX5", "VIRTEX6", "7SERIES" 
            ALMOST_FULL_OFFSET => AF_OFFSET,  -- Sets almost full threshold
            ALMOST_EMPTY_OFFSET => AE_OFFSET, -- Sets the almost empty threshold
-           DATA_WIDTH => (DWIDTH + metadata_width),   -- Valid values are 1-72 (37-72 only valid when FIFO_SIZE="36Kb")
+           DATA_WIDTH => (2**DWIDTH_EXP + metadata_width),   -- Valid values are 1-72 (37-72 only valid when FIFO_SIZE="36Kb")
            FIFO_SIZE => "36Kb",            -- Target BRAM, "18Kb" or "36Kb" 
            FIRST_WORD_FALL_THROUGH => TRUE) -- Sets the FIFO FWFT to TRUE or FALSE
         port map (
@@ -204,7 +203,7 @@ begin
            WRCLK       => CLK_a,         -- 1-bit input write clock
            WREN        => s_axis_stream.valid           -- 1-bit input write enable
         );
-    END GENERATE GEN_nCDC;
+    END GENERATE GEN_CDC;
     
     GEN_PIPELINE_EN : if PIPELINE_EN = TRUE GENERATE
         PIPELINE_PROC : process (CLK_b) 
@@ -216,9 +215,9 @@ begin
                     m_stream_pipeline_buffer(0).tlast <= '0';
                 else
                 
-                    m_stream_pipeline_buffer(0).data(DWIDTH - 1 downto 0) <= m_axis_dbus(DWIDTH + metadata_width - 1 downto 1);
-                    m_stream_pipeline_buffer(0).valid                     <= not m_axis_fifo_empty;
-                    m_stream_pipeline_buffer(0).tlast                     <= m_axis_dbus(m_axis_dbus'low); 
+                    m_stream_pipeline_buffer(0).data(2**DWIDTH_EXP - 1 downto 0) <= m_axis_dbus(2**DWIDTH_EXP + metadata_width - 1 downto 1);
+                    m_stream_pipeline_buffer(0).valid                            <= not m_axis_fifo_empty;
+                    m_stream_pipeline_buffer(0).tlast                            <= m_axis_dbus(m_axis_dbus'low); 
                     
                     for i in 1 to PIPELINE_STAGES - 1 loop
                         m_stream_pipeline_buffer(i) <= m_stream_pipeline_buffer(i - 1);
@@ -228,14 +227,14 @@ begin
             end if; 
         end process PIPELINE_PROC;
 
-        m_axis_stream.data  <= m_stream_pipeline_buffer(PIPELINE_STAGES - 1).data(DWIDTH - 1 downto 0);
+        m_axis_stream.data  <= m_stream_pipeline_buffer(PIPELINE_STAGES - 1).data(2**DWIDTH_EXP - 1 downto 0);
         m_axis_stream.valid <= m_stream_pipeline_buffer(PIPELINE_STAGES - 1).valid;
         m_axis_stream.tlast <= m_stream_pipeline_buffer(PIPELINE_STAGES - 1).tlast;        
         
     END GENERATE GEN_PIPELINE_EN;
     
     nGEN_PIPELINE_EN : if PIPELINE_EN = FALSE GENERATE
-         m_axis_stream.data  <= m_axis_dbus(DWIDTH + metadata_width - 1 downto metadata_width);
+         m_axis_stream.data  <= m_axis_dbus(2**DWIDTH_EXP + metadata_width - 1 downto metadata_width);
          m_axis_stream.valid <= not m_axis_fifo_empty;
          m_axis_stream.tlast <= m_axis_dbus(m_axis_dbus'low); 
     END GENERATE nGEN_PIPELINE_EN;
